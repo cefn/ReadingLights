@@ -31,7 +31,7 @@ void setup(){
   strip.setCPUmax(10);    // 70% is what we start at
   
   //strip.begin();
-  //turnOff();
+  turnOff();
   
 }
 
