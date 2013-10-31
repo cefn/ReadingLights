@@ -29,14 +29,14 @@ void setup(){
   strip.setPWMbits(3);
   strip.setSPIdivider(16);
   strip.setCPUmax(10);    // 70% is what we start at
-  strip.begin();
   
-  paintColor(RED);
+  //strip.begin();
+  //turnOff();
   
 }
 
 void loop(){
-  Serial.println("Loop");
+  Serial.print("<");
   
   //get a distance sensor value
   
@@ -52,28 +52,32 @@ void loop(){
   duration = pulseIn(echoPin, HIGH, maxDuration);
   distance = (duration/2) / 29.1;
   //Serial.print("Distance");
-  Serial.println(distance);
+  Serial.print(distance);
   
   //time since last triggered
   unsigned long since = (millis() - lastTriggered);
   
   if(distance > 0 && distance < 140 ){
     lastPresence = millis();
+    Serial.print("D");
     if(lastTriggered == 0 || since > displayTime * 2){
       lastTriggered = millis();
-      Serial.println("Triggered");
+      Serial.print("T");
     } 
   }
       
   if(lastTriggered != 0){ //has been triggered at least once
     if(since < displayTime){ //triggered recently
       paintColor(staticColor);
+      Serial.print("P");
     }
     else{
+      Serial.print("O");
       turnOff();
     }
   }
  
+  Serial.println(">");
 }
 
 /*
