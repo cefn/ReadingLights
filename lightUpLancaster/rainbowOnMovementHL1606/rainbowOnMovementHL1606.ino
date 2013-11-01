@@ -2,21 +2,58 @@
 
 int triggerPin = 12;
 int echoPin = 9;
-long maxDuration = 50000; //longest time a pulse might take in microseconds
-long displayTime = 1000; //time to display after an ultrasonic trigger in milliseconds
+long maxPulse = 16000; //longest time a pulse might take in microseconds
+long displayTime = 10000; //time to display after an ultrasonic trigger in milliseconds
 
 unsigned long lastPresence = 0; //timecode at which ultrasonic last saw movement
 unsigned long lastTriggered = 0; //timecode at which sequence was initiated (there's hysteresis which prevents immediate re-triggering)
 
-uint32_t WHITE = Color(255,255,255);
-uint32_t RED = Color(255,0,0);
-uint32_t GREEN = Color(0,255,0);
-uint32_t BLUE = Color(0,0,255);
+byte maxByte = 32;
 
-uint32_t staticColor = WHITE;
+byte BLACK[] = {0,0,0};
+byte WHITE[] = {maxByte,maxByte,25};
+byte RED[] = {maxByte,0,0};
+byte PINK[] = {maxByte,maxByte/4,maxByte/4};
+byte ORANGE[] = {maxByte,maxByte/6,0};
+byte GREEN[] = {0,maxByte,0};
+byte LIGHT_BLUE[] = {13,25,32};
+byte BLUE[] = {0,0,maxByte};
+byte YELLOW[] = {maxByte,12,0};
+
+//DAWN: Blue, Pastel Blue, Orange
+//DAY: Orange, Yellow, White
+//DUSK: White, Yellow, Orange
+//NIGHT: Orange, Pastel Blue, Blue
+
+/*
+//DAWN
+byte *START = BLUE;
+byte *MIDDLE = LIGHT_BLUE;
+byte *END = PINK;
+
+//DAY
+byte *START = PINK;
+byte *MIDDLE = YELLOW;
+byte *END = WHITE;
+
+
+//DUSK
+byte *START = LIGHT_BLUE;
+byte *MIDDLE = YELLOW;
+byte *END = ORANGE;
+*/
+
+//NIGHT
+byte *START = ORANGE;
+byte *MIDDLE = LIGHT_BLUE;
+byte *END = BLUE;
+
+/*
+
+*/
 
 int latchPin = 10;
-HL1606stripPWM strip = HL1606stripPWM(2, latchPin); 
+HL1606stripPWM strip = HL1606stripPWM(32, latchPin); 
 
 void setup(){
   
@@ -26,18 +63,20 @@ void setup(){
   pinMode(triggerPin,OUTPUT);
   pinMode(echoPin,INPUT);
   
-  strip.setPWMbits(3);
+  strip.setPWMbits(5);
   strip.setSPIdivider(16);
-  strip.setCPUmax(10);    // 70% is what we start at
+  strip.setCPUmax(70);    // 70% is what we start at
   
-  //strip.begin();
+  strip.begin();
   turnOff();
   
 }
 
 void loop(){
-  Serial.print("<");
-  
+  //Serial.print("<");
+
+  long duration, distance;
+
   //get a distance sensor value
   
   //trigger pulse 
@@ -48,36 +87,65 @@ void loop(){
   digitalWrite(triggerPin,LOW);
   
   //wait on response
-  long duration, distance;
-  duration = pulseIn(echoPin, HIGH, maxDuration);
+  duration = pulseIn(echoPin, HIGH, maxPulse);
   distance = (duration/2) / 29.1;
   //Serial.print("Distance");
   Serial.print(distance);
   
+  //TODO CH REMOVE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  //distance = 100;
+  ///THE ABOVE LINE OVERRIDES THE SENSOR
+
+  
   //time since last triggered
   unsigned long since = (millis() - lastTriggered);
-  
+  //Serial.print(" since: ");
+  //Serial.println(since);
+    
   if(distance > 0 && distance < 140 ){
     lastPresence = millis();
-    Serial.print("D");
-    if(lastTriggered == 0 || since > displayTime * 2){
+    //Serial.print("D");
+    if((lastTriggered == 0) || (since > (displayTime * 2))){
       lastTriggered = millis();
-      Serial.print("T");
+      //Serial.print("T");
     } 
   }
-      
+  
+  boolean glowing=false;
   if(lastTriggered != 0){ //has been triggered at least once
     if(since < displayTime){ //triggered recently
-      paintColor(staticColor);
-      Serial.print("P");
-    }
-    else{
-      Serial.print("O");
-      turnOff();
+      glowing = true;
     }
   }
- 
-  Serial.println(">");
+  
+  if(glowing){
+    unsigned long halfTime = displayTime / 2;
+    unsigned long halfSince = since % halfTime;
+    int pos = ((halfSince % halfTime) * 256) / halfTime;
+    float brightness = 1.0f;
+    if(since < halfTime){
+      brightness = min(1.0f,((float)pos) / 256.0f * 16.0f);
+      paintTween(START,MIDDLE,pos, brightness);
+    }
+    else{
+      brightness = min(1.0f,(255.0f - ((float)pos)) / 256.0f * 16.0f);
+      paintTween(MIDDLE,END,pos, brightness);      
+    }
+    //paintColor5Bit(BLACK);
+    //paintColor5Bit(BLUE);
+    //paintColor5Bit(LIGHT_BLUE);
+    //paintColor5Bit(ORANGE);
+    //paintColor5Bit(YELLOW);
+
+    //Serial.print("P");
+  }
+  else{
+    //Serial.println("Off");
+    turnOff();
+  }
+  
+  //Serial.println(">");
+  
 }
 
 /*
@@ -86,6 +154,10 @@ void loop(){
 
 void turnOff(){
   paintColor(0x000000);
+}
+
+void paintColor5Bit(byte *color){
+  paintTween(color,color,0, 1.0f);
 }
 
 void paintColor(uint32_t c){
@@ -99,6 +171,47 @@ void paintRainbow(int pos){
     uint16_t c = Wheel((i+pos) % 96);
     strip.setLEDcolorPWM(i, (c & 0x1F) << 3, ((c>>10) & 0x1F) << 3, ((c>>5) & 0x1F) << 3);
   }
+}
+
+/** Tweens colors (as an r,g,b triplet between 0 and 255), with a position value (between 0 and 255)
+* and a brightness between 0.0 and 1.0
+*/
+void paintTween(byte from[], byte to[], float pos, float brightness){
+  
+  float negpos = (255.0f - pos);
+  float r = ((from[0] * negpos) + (to[0] * pos)) / 256.0f * brightness;
+  float g = ((from[1] * negpos) + (to[1] * pos)) / 256.0f * brightness;
+  float b = ((from[2] * negpos) + (to[2] * pos)) / 256.0f * brightness;
+  paintColor(Color((byte)r,(byte)g,(byte)b));
+
+  static int last = 0;
+  if(brightness != last){
+    last = brightness;
+    Serial.print("pos:");
+    Serial.print(pos);
+    Serial.print(",");
+    Serial.print(" bright:");
+    Serial.print(brightness);
+    Serial.print(" from:");
+    Serial.print(from[0]);
+    Serial.print(",");
+    Serial.print(from[1]);
+    Serial.print(",");
+    Serial.print(from[2]);
+    Serial.print(" to:");
+    Serial.print(to[0]);
+    Serial.print(",");
+    Serial.print(to[1]);
+    Serial.print(",");
+    Serial.print(to[2]);
+    Serial.print(" rgb:");
+    Serial.print((byte)r);
+    Serial.print(",");
+    Serial.print((byte)g);
+    Serial.print(",");
+    Serial.println((byte)b);    
+  }
+
 }
 
 unsigned int Color(byte r, byte g, byte b)
